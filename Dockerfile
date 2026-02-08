@@ -1,26 +1,19 @@
 # syntax=docker/dockerfile:1
-
 # Frontend build stage
 FROM oven/bun:1 AS frontend-builder
-
 WORKDIR /app
-
 # Copy frontend source code
 COPY lightrag_webui/ ./lightrag_webui/
-
 # Build frontend assets for inclusion in the API package
-RUN --mount=type=cache,target=/root/.bun/install/cache \
-    cd lightrag_webui \
+RUN cd lightrag_webui \
     && bun install --frozen-lockfile \
     && bun run build
 
 # Python build stage - using uv for faster package installation
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
-
 ENV DEBIAN_FRONTEND=noninteractive
 ENV UV_SYSTEM_PYTHON=1
 ENV UV_COMPILE_BYTECODE=1
-
 WORKDIR /app
 
 # Install system deps (Rust is required by some wheels)
@@ -43,8 +36,7 @@ COPY setup.py .
 COPY uv.lock .
 
 # Install base, API, and offline extras without the project to improve caching
-RUN --mount=type=cache,target=/root/.local/share/uv \
-    uv sync --frozen --no-dev --extra api --extra offline --no-install-project --no-editable
+RUN uv sync --frozen --no-dev --extra api --extra offline --no-install-project --no-editable
 
 # Copy project sources after dependency layer
 COPY lightrag/ ./lightrag/
@@ -53,8 +45,7 @@ COPY lightrag/ ./lightrag/
 COPY --from=frontend-builder /app/lightrag/api/webui ./lightrag/api/webui
 
 # Sync project in non-editable mode and ensure pip is available for runtime installs
-RUN --mount=type=cache,target=/root/.local/share/uv \
-    uv sync --frozen --no-dev --extra api --extra offline --no-editable \
+RUN uv sync --frozen --no-dev --extra api --extra offline --no-editable \
     && /app/.venv/bin/python -m ensurepip --upgrade
 
 # Prepare offline cache directory and pre-populate tiktoken data
@@ -65,12 +56,10 @@ RUN mkdir -p /app/data/tiktoken \
 
 # Final stage
 FROM python:3.12-slim
-
 WORKDIR /app
 
 # Install uv for package management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
 ENV UV_SYSTEM_PYTHON=1
 
 # Copy installed packages and application code
@@ -86,8 +75,7 @@ ENV PATH=/app/.venv/bin:/root/.local/bin:$PATH
 
 # Install dependencies with uv sync (uses locked versions from uv.lock)
 # And ensure pip is available for runtime installs
-RUN --mount=type=cache,target=/root/.local/share/uv \
-    uv sync --frozen --no-dev --extra api --extra offline --no-editable \
+RUN uv sync --frozen --no-dev --extra api --extra offline --no-editable \
     && /app/.venv/bin/python -m ensurepip --upgrade
 
 # Create persistent data directories AFTER package installation
